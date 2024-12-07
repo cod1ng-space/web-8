@@ -27,43 +27,52 @@ type DatabaseProvider struct {
 }
 
 // Обработчики HTTP-запросов
-func (h *Handlers) GetHello(w http.ResponseWriter, r *http.Request) {
-	msg, err := h.dbProvider.SelectHello()
+func (h *Handlers) GetCount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	msg, err := h.dbProvider.SelectCount()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+	} else {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(msg))
 	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(msg))
 }
-func (h *Handlers) PostHello(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) PostCount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	input := struct {
-		Msg string `json:"msg"`
+		Msg *int `json:"count"`
 	}{}
-
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&input)
-	if err != nil {
+	if input.Msg == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Отсутствует поле 'count'!"))
+	} else if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
+	} else {
+		err = h.dbProvider.UpdateCount(*input.Msg)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+		} else {
+			w.WriteHeader(http.StatusAccepted)
+		}
 	}
-
-	err = h.dbProvider.InsertHello(input.Msg)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-	}
-
-	w.WriteHeader(http.StatusCreated)
 }
 
 // Методы для работы с базой данных
-func (dp *DatabaseProvider) SelectHello() (string, error) {
+func (dp *DatabaseProvider) SelectCount() (string, error) {
 	var msg string
 
-	// Получаем одно сообщение из таблицы hello, отсортированной в случайном порядке
-	row := dp.db.QueryRow("SELECT message FROM hello ORDER BY RANDOM() LIMIT 1")
+	row := dp.db.QueryRow("SELECT num FROM counter")
 	err := row.Scan(&msg)
 	if err != nil {
 		return "", err
@@ -71,8 +80,8 @@ func (dp *DatabaseProvider) SelectHello() (string, error) {
 
 	return msg, nil
 }
-func (dp *DatabaseProvider) InsertHello(msg string) error {
-	_, err := dp.db.Exec("INSERT INTO hello (message) VALUES ($1)", msg)
+func (dp *DatabaseProvider) UpdateCount(msg int) error {
+	_, err := dp.db.Exec("UPDATE counter SET num = num + $1", msg)
 	if err != nil {
 		return err
 	}
@@ -100,12 +109,12 @@ func main() {
 	h := Handlers{dbProvider: dp}
 
 	// Регистрируем обработчики
-	http.HandleFunc("/get", h.GetHello)
-	http.HandleFunc("/post", h.PostHello)
+	http.HandleFunc("/get", h.GetCount)
+	http.HandleFunc("/post", h.PostCount)
 
 	fmt.Println("Сервер запущен")
 	// Запускаем веб-сервер на указанном адресе
-	err = http.ListenAndServe(":8081", nil)
+	err = http.ListenAndServe(":8083", nil)
 	if err != nil {
 		log.Fatal(err)
 	}

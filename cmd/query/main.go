@@ -27,19 +27,30 @@ type DatabaseProvider struct {
 }
 
 // Обработчики HTTP-запросов
-func (h *Handlers) GetHello(w http.ResponseWriter, r *http.Request) {
-	msg, err := h.dbProvider.SelectHello()
+func (h *Handlers) GetQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	msg, err := h.dbProvider.SelectQuery()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+	} else if msg == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Неинициализированное значение в базе данных!"))
+	} else {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Hello, " + msg + "!"))
 	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(msg))
 }
-func (h *Handlers) PostHello(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) PostQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	input := struct {
-		Msg string `json:"msg"`
+		Msg string `json:"name"`
 	}{}
 
 	decoder := json.NewDecoder(r.Body)
@@ -47,23 +58,25 @@ func (h *Handlers) PostHello(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
+	} else if input.Msg == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Пустая строка!"))
+	} else {
+		err = h.dbProvider.UpdateQuery(input.Msg)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+		} else {
+			w.WriteHeader(http.StatusAccepted)
+		}
 	}
-
-	err = h.dbProvider.InsertHello(input.Msg)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-	}
-
-	w.WriteHeader(http.StatusCreated)
 }
 
 // Методы для работы с базой данных
-func (dp *DatabaseProvider) SelectHello() (string, error) {
+func (dp *DatabaseProvider) SelectQuery() (string, error) {
 	var msg string
 
-	// Получаем одно сообщение из таблицы hello, отсортированной в случайном порядке
-	row := dp.db.QueryRow("SELECT message FROM hello ORDER BY RANDOM() LIMIT 1")
+	row := dp.db.QueryRow("SELECT name FROM query")
 	err := row.Scan(&msg)
 	if err != nil {
 		return "", err
@@ -71,8 +84,8 @@ func (dp *DatabaseProvider) SelectHello() (string, error) {
 
 	return msg, nil
 }
-func (dp *DatabaseProvider) InsertHello(msg string) error {
-	_, err := dp.db.Exec("INSERT INTO hello (message) VALUES ($1)", msg)
+func (dp *DatabaseProvider) UpdateQuery(msg string) error {
+	_, err := dp.db.Exec("UPDATE query SET name = $1", msg)
 	if err != nil {
 		return err
 	}
@@ -100,12 +113,12 @@ func main() {
 	h := Handlers{dbProvider: dp}
 
 	// Регистрируем обработчики
-	http.HandleFunc("/get", h.GetHello)
-	http.HandleFunc("/post", h.PostHello)
+	http.HandleFunc("/get", h.GetQuery)
+	http.HandleFunc("/post", h.PostQuery)
 
 	fmt.Println("Сервер запущен")
 	// Запускаем веб-сервер на указанном адресе
-	err = http.ListenAndServe(":8081", nil)
+	err = http.ListenAndServe(":8082", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
