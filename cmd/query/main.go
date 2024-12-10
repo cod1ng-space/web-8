@@ -50,7 +50,7 @@ func (h *Handlers) PostQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := struct {
-		Msg string `json:"name"`
+		Msg *string `json:"name"`
 	}{}
 
 	decoder := json.NewDecoder(r.Body)
@@ -58,11 +58,14 @@ func (h *Handlers) PostQuery(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
-	} else if input.Msg == "" {
+	} else if input.Msg == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Отсуствует поле name!"))
+	} else if *input.Msg == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Пустая строка!"))
 	} else {
-		err = h.dbProvider.UpdateQuery(input.Msg)
+		err = h.dbProvider.UpdateQuery(*input.Msg)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))

@@ -28,6 +28,10 @@ type DatabaseProvider struct {
 
 // Обработчики HTTP-запросов
 func (h *Handlers) GetHello(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	msg, err := h.dbProvider.SelectHello()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -38,18 +42,27 @@ func (h *Handlers) GetHello(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(msg))
 }
 func (h *Handlers) PostHello(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	input := struct {
-		Msg string `json:"msg"`
+		Msg *string `json:"msg"`
 	}{}
 
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&input)
+	if input.Msg == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Отсуствует поле msg!"))
+		return
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 	}
 
-	err = h.dbProvider.InsertHello(input.Msg)
+	err = h.dbProvider.InsertHello(*input.Msg)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
